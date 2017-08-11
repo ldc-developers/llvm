@@ -25,13 +25,16 @@ using namespace llvm;
 namespace {
 
   class ARMELFObjectWriter : public MCELFObjectTargetWriter {
+    // LDC
+    const bool isAndroid;
+
     enum { DefaultEABIVersion = 0x05000000U };
 
     unsigned GetRelocTypeInner(const MCValue &Target, const MCFixup &Fixup,
                                bool IsPCRel, MCContext &Ctx) const;
 
   public:
-    ARMELFObjectWriter(uint8_t OSABI);
+    ARMELFObjectWriter(uint8_t OSABI, bool IsAndroid);
 
     ~ARMELFObjectWriter() override = default;
 
@@ -44,10 +47,10 @@ namespace {
 
 } // end anonymous namespace
 
-ARMELFObjectWriter::ARMELFObjectWriter(uint8_t OSABI)
-  : MCELFObjectTargetWriter(/*Is64Bit*/ false, OSABI,
-                            ELF::EM_ARM,
-                            /*HasRelocationAddend*/ false) {}
+ARMELFObjectWriter::ARMELFObjectWriter(uint8_t OSABI, bool IsAndroid)
+    : MCELFObjectTargetWriter(/*Is64Bit*/ false, OSABI, ELF::EM_ARM,
+                              /*HasRelocationAddend*/ false),
+      isAndroid(IsAndroid) {}
 
 bool ARMELFObjectWriter::needsRelocateWithSymbol(const MCSymbol &Sym,
                                                  unsigned Type) const {
@@ -164,7 +167,8 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
     case MCSymbolRefExpr::VK_GOT:
       return ELF::R_ARM_GOT_BREL;
     case MCSymbolRefExpr::VK_TLSGD:
-      return ELF::R_ARM_TLS_GD32;
+      // LDC
+      return isAndroid ? ELF::R_ARM_GOT_PREL : ELF::R_ARM_TLS_GD32;
     case MCSymbolRefExpr::VK_TPOFF:
       return ELF::R_ARM_TLS_LE32;
     case MCSymbolRefExpr::VK_GOTTPOFF:
@@ -238,7 +242,8 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
 
 std::unique_ptr<MCObjectWriter>
 llvm::createARMELFObjectWriter(raw_pwrite_stream &OS, uint8_t OSABI,
-                               bool IsLittleEndian) {
-  return createELFObjectWriter(llvm::make_unique<ARMELFObjectWriter>(OSABI), OS,
-                               IsLittleEndian);
+                               bool IsLittleEndian, bool IsAndroid) {
+  return createELFObjectWriter(
+      llvm::make_unique<ARMELFObjectWriter>(OSABI, IsAndroid), OS,
+      IsLittleEndian);
 }

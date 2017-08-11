@@ -103,7 +103,8 @@ MCStreamer *createARMWinCOFFStreamer(MCContext &Context,
 /// Construct an ELF Mach-O object writer.
 std::unique_ptr<MCObjectWriter> createARMELFObjectWriter(raw_pwrite_stream &OS,
                                                          uint8_t OSABI,
-                                                         bool IsLittleEndian);
+                                                         bool IsLittleEndian,
+                                                         bool IsAndroid);
 
 /// Construct an ARM Mach-O object writer.
 std::unique_ptr<MCObjectWriter> createARMMachObjectWriter(raw_pwrite_stream &OS,

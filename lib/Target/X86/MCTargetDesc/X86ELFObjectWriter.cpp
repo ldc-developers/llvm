@@ -15,6 +15,7 @@
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCFixup.h"
+#include "llvm/MC/MCObjectFileInfo.h" // LDC
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -257,7 +258,12 @@ static unsigned getRelocType32(MCContext &Ctx,
   case MCSymbolRefExpr::VK_TLSGD:
     assert(Type == RT32_32);
     assert(!IsPCRel);
-    return ELF::R_386_TLS_GD;
+    // LDC
+    {
+      auto ofi = Ctx.getObjectFileInfo();
+      return ofi && ofi->getTargetTriple().isAndroid() ? ELF::R_386_GOT32
+                                                       : ELF::R_386_TLS_GD;
+    }
   case MCSymbolRefExpr::VK_GOTTPOFF:
     assert(Type == RT32_32);
     assert(!IsPCRel);
