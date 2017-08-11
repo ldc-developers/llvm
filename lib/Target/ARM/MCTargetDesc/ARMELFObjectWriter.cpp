@@ -24,13 +24,16 @@ using namespace llvm;
 namespace {
 
   class ARMELFObjectWriter : public MCELFObjectTargetWriter {
+    // LDC
+    const bool isAndroid;
+
     enum { DefaultEABIVersion = 0x05000000U };
 
     unsigned GetRelocTypeInner(const MCValue &Target, const MCFixup &Fixup,
                                bool IsPCRel, MCContext &Ctx) const;
 
   public:
-    ARMELFObjectWriter(uint8_t OSABI);
+    ARMELFObjectWriter(uint8_t OSABI, bool IsAndroid);
 
     ~ARMELFObjectWriter() override = default;
 
@@ -43,10 +46,10 @@ namespace {
 
 } // end anonymous namespace
 
-ARMELFObjectWriter::ARMELFObjectWriter(uint8_t OSABI)
-  : MCELFObjectTargetWriter(/*Is64Bit*/ false, OSABI,
-                            ELF::EM_ARM,
-                            /*HasRelocationAddend*/ false) {}
+ARMELFObjectWriter::ARMELFObjectWriter(uint8_t OSABI, bool IsAndroid)
+    : MCELFObjectTargetWriter(/*Is64Bit*/ false, OSABI, ELF::EM_ARM,
+                              /*HasRelocationAddend*/ false),
+      isAndroid(IsAndroid) {}
 
 bool ARMELFObjectWriter::needsRelocateWithSymbol(const MCSymbol &Sym,
                                                  unsigned Type) const {
@@ -189,7 +192,8 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
         Type = ELF::R_ARM_GOT_BREL;
         break;
       case MCSymbolRefExpr::VK_TLSGD:
-        Type = ELF::R_ARM_TLS_GD32;
+        // LDC
+        Type = (isAndroid ? ELF::R_ARM_GOT_PREL : ELF::R_ARM_TLS_GD32);
         break;
       case MCSymbolRefExpr::VK_TPOFF:
         Type = ELF::R_ARM_TLS_LE32;
@@ -299,7 +303,8 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
 
 MCObjectWriter *llvm::createARMELFObjectWriter(raw_pwrite_stream &OS,
                                                uint8_t OSABI,
-                                               bool IsLittleEndian) {
-  MCELFObjectTargetWriter *MOTW = new ARMELFObjectWriter(OSABI);
+                                               bool IsLittleEndian,
+                                               bool IsAndroid) {
+  MCELFObjectTargetWriter *MOTW = new ARMELFObjectWriter(OSABI, IsAndroid);
   return createELFObjectWriter(MOTW, OS, IsLittleEndian);
 }
