@@ -18,15 +18,19 @@ using namespace llvm;
 
 namespace {
 class ARMAsmBackendELF : public ARMAsmBackend {
+  // LDC
+  const bool isAndroid;
+
 public:
   uint8_t OSABI;
   ARMAsmBackendELF(const Target &T, const MCSubtargetInfo &STI, uint8_t OSABI,
                    support::endianness Endian)
-      : ARMAsmBackend(T, STI, Endian), OSABI(OSABI) {}
+      : ARMAsmBackend(T, STI, Endian),
+        isAndroid(STI.getTargetTriple().isAndroid()), OSABI(OSABI) {}
 
   std::unique_ptr<MCObjectTargetWriter>
   createObjectTargetWriter() const override {
-    return createARMELFObjectWriter(OSABI);
+    return createARMELFObjectWriter(OSABI, isAndroid);
   }
 };
 }

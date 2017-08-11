@@ -87,7 +87,8 @@ MCStreamer *createARMWinCOFFStreamer(MCContext &Context,
                                      bool IncrementalLinkerCompatible);
 
 /// Construct an ELF Mach-O object writer.
-std::unique_ptr<MCObjectTargetWriter> createARMELFObjectWriter(uint8_t OSABI);
+std::unique_ptr<MCObjectTargetWriter> createARMELFObjectWriter(uint8_t OSABI,
+                                                               bool IsAndroid);
 
 /// Construct an ARM Mach-O object writer.
 std::unique_ptr<MCObjectTargetWriter>
