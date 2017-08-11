@@ -99,7 +99,7 @@ MCStreamer *createARMWinCOFFStreamer(MCContext &Context, MCAsmBackend &MAB,
 
 /// Construct an ELF Mach-O object writer.
 MCObjectWriter *createARMELFObjectWriter(raw_pwrite_stream &OS, uint8_t OSABI,
-                                         bool IsLittleEndian);
+                                         bool IsLittleEndian, bool IsAndroid);
 
 /// Construct an ARM Mach-O object writer.
 MCObjectWriter *createARMMachObjectWriter(raw_pwrite_stream &OS, bool Is64Bit,
