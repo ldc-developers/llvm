@@ -1,0 +1,116 @@
+#---------------------------------#
+#      general configuration      #
+#---------------------------------#
+
+#version: 1.0.{build}-{branch}
+
+#---------------------------------#
+#    environment configuration    #
+#---------------------------------#
+
+environment:
+  matrix:
+    - APPVEYOR_JOB_ARCH:           x64
+      LLVM_ENABLE_ASSERTIONS:      OFF
+      APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
+    - APPVEYOR_JOB_ARCH:           x86
+      LLVM_ENABLE_ASSERTIONS:      OFF
+      APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
+    - APPVEYOR_JOB_ARCH:           x64
+      LLVM_ENABLE_ASSERTIONS:      ON
+      APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
+    - APPVEYOR_JOB_ARCH:           x86
+      LLVM_ENABLE_ASSERTIONS:      ON
+      APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
+
+# scripts that are called at very beginning, before repo cloning
+init:
+  - git config --global core.autocrlf input
+
+clone_depth: 1
+
+# scripts that run after cloning repository
+install:
+  - cd c:\projects
+  # Fetch submodules
+  - cd llvm
+  - git submodule update --init --recursive
+  - cd ..
+  # Download & extract Ninja
+  - appveyor DownloadFile "https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-win.zip" -FileName ninja.zip
+  - md ninja
+  - cd ninja
+  - 7z x ..\ninja.zip > nul
+  - cd ..
+  # Set environment variables
+  - set PATH=%CD%\ninja;%PATH%
+  - if "%APPVEYOR_BUILD_WORKER_IMAGE:~-4%" == "2017" call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\Common7\Tools\VsDevCmd.bat" -arch=%APPVEYOR_JOB_ARCH%
+  - if "%APPVEYOR_BUILD_WORKER_IMAGE:~-4%" == "2015" call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" %APPVEYOR_JOB_ARCH%
+  # Print environment info
+  - set
+  - msbuild /version
+  - cl
+  - cmake --version
+  - ninja --version
+
+#---------------------------------#
+#       build configuration       #
+#---------------------------------#
+
+build_script:
+  - cd c:\projects
+  - md ninja-llvm
+  - cd ninja-llvm
+  - cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=c:\projects\LLVM-%APPVEYOR_JOB_ARCH% -DLLVM_USE_CRT_RELEASE=MT -DLLVM_TARGETS_TO_BUILD=X86;AArch64;ARM;PowerPC;NVPTX -DLLVM_ENABLE_ASSERTIONS=%LLVM_ENABLE_ASSERTIONS% ..\llvm
+  - ninja -j3 install
+  # TODO: Include compiler-rt as soon as AppVeyor doesn't scratch the timeout limit anymore.
+
+after_build:
+  # pack installation dir & publish as artifact
+  - ps: |
+        echo 'Preparing artifact...'
+        cd "c:\projects\LLVM-$Env:APPVEYOR_JOB_ARCH"
+        del bin\ld.lld.exe
+        del bin\ld64.lld.exe
+        del bin\lld.exe
+        del bin\wasm-ld.exe
+        $assertsSuffix = ''
+        If ($Env:LLVM_ENABLE_ASSERTIONS -eq 'ON') {
+          $assertsSuffix = '-withAsserts'
+        }
+        If (Test-Path Env:APPVEYOR_REPO_TAG_NAME) {
+          $artifactFilename = "llvm-$($Env:APPVEYOR_REPO_TAG_NAME.Substring(5))-windows-$Env:APPVEYOR_JOB_ARCH$assertsSuffix.7z"
+        } Else {
+          $artifactFilename = "llvm-$($Env:APPVEYOR_REPO_COMMIT.Substring(0, 8))-windows-$Env:APPVEYOR_JOB_ARCH$assertsSuffix-$(get-date -f yyyyMMdd).7z"
+        }
+        # TODO: Use higher compression level (-mx=9) as soon as
+        # AppVeyor doesn't scratch the timeout limit anymore.
+        7z a "..\$artifactFilename" * > $null
+        cd ..
+        Push-AppveyorArtifact $artifactFilename
+
+test: off
+
+#---------------------------------#
+#     deployment configuration    #
+#---------------------------------#
+
+deploy:
+  - release: CI
+    prerelease: true
+    provider: GitHub
+    auth_token:
+      secure: qnbD8agL9mr0SFvy/sMkR2E29oQQ427T5zYwVVZkjRS3IZ361tG+9jlSiyEkyULy
+    artifact: /llvm-.*\.7z/
+    on:
+      appveyor_repo_tag: false
+  - release: $(APPVEYOR_REPO_TAG_NAME)
+    description: $(APPVEYOR_REPO_TAG_NAME)
+    prerelease: true
+    draft: true
+    provider: GitHub
+    auth_token:
+      secure: qnbD8agL9mr0SFvy/sMkR2E29oQQ427T5zYwVVZkjRS3IZ361tG+9jlSiyEkyULy
+    artifact: /llvm-.*\.7z/
+    on:
+      appveyor_repo_tag: true

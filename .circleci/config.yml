@@ -1,0 +1,170 @@
+# The common steps require environment variables CI_OS and LLVM_ENABLE_ASSERTIONS.
+commonSteps: &commonSteps
+  steps:
+    # Each step starts in working dir `<root>/project` (containing the cloned LLVM repo).
+    - run:
+        name: Install dependencies
+        command: |
+          cd ..
+          if [ "$CI_OS" = "linux" ]; then
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get -y update
+            apt-get -yq install software-properties-common
+            add-apt-repository -y ppa:ubuntu-toolchain-r/test
+            apt-get -y update
+            apt-get -yq install curl git-core g++-6 binutils-dev ninja-build
+            echo "export CC=gcc-6" >> $BASH_ENV
+            echo "export CXX=g++-6" >> $BASH_ENV
+            # install CMake
+            curl -L -o cmake-x64.tar.gz https://cmake.org/files/v3.10/cmake-3.10.0-Linux-x86_64.tar.gz
+            mkdir cmake-x64
+            tar -xf cmake-x64.tar.gz --strip 1 -C cmake-x64
+            echo "export PATH=$PWD/cmake-x64/bin:$PATH" >> $BASH_ENV
+          else
+            # install CMake
+            curl -L -o cmake-x64.tar.gz https://cmake.org/files/v3.10/cmake-3.10.0-Darwin-x86_64.tar.gz
+            mkdir cmake-x64
+            tar -xf cmake-x64.tar.gz --strip 3 -C cmake-x64
+            # install Ninja
+            curl -OL https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-mac.zip
+            mkdir ninja
+            tar -xf ninja-mac.zip -C ninja
+            echo "export PATH=$PWD/cmake-x64/bin:$PWD/ninja:$PATH" >> $BASH_ENV
+          fi
+    - checkout
+    - run:
+        name: Checkout git submodules
+        command: git submodule update --init --recursive
+    - run:
+        name: Build LLVM
+        command: |
+          cd ..
+          echo "$PATH"
+          ninja --version
+          cmake --version
+          mkdir ninja-llvm
+          cd ninja-llvm
+          if [ "$CI_OS" = "linux" ]; then
+            extraCMakeFlags="-DLLVM_BINUTILS_INCDIR=/usr/include -DCMAKE_CXX_FLAGS=-static-libstdc++"
+          else
+            extraCMakeFlags="-DLLVM_ENABLE_LIBCXX=True -DHAVE_FUTIMENS=0"
+          fi
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(dirname $PWD)/llvm-x64 -DLLVM_TARGETS_TO_BUILD="X86;AArch64;ARM;PowerPC;NVPTX" -DLLVM_ENABLE_ASSERTIONS=$LLVM_ENABLE_ASSERTIONS $extraCMakeFlags $CIRCLE_WORKING_DIRECTORY
+          ninja -j3 install
+          cd ..
+    - run:
+        name: Build compiler-rt
+        command: |
+          cd ..
+          LLVM_VERSION=$(llvm-x64/bin/llvm-config --version)
+          LLVM_VERSION=${LLVM_VERSION:0:5}
+          echo "$LLVM_VERSION"
+          curl -OL http://releases.llvm.org/$LLVM_VERSION/compiler-rt-$LLVM_VERSION.src.tar.xz
+          tar -xf compiler-rt-$LLVM_VERSION.src.tar.xz --no-same-owner
+          mkdir ninja-compiler-rt
+          cd ninja-compiler-rt
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(dirname $PWD)/llvm-x64/lib/clang/$LLVM_VERSION -DLLVM_CONFIG_PATH=$(dirname $PWD)/llvm-x64/bin/llvm-config ../compiler-rt-$LLVM_VERSION.src
+          ninja -j3 install
+          cd ..
+    - run:
+        name: Pack installation dir
+        no_output_timeout: 20m
+        command: |
+          cd ..
+          mkdir artifacts
+          assertsSuffix=""
+          if [ "$LLVM_ENABLE_ASSERTIONS" = "ON" ]; then assertsSuffix="-withAsserts"; fi
+          if [ -z "$CIRCLE_TAG" ]; then
+            artifactBasename="llvm-${CIRCLE_SHA1:0:8}-$CI_OS-x86_64$assertsSuffix-$(date "+%Y%m%d")"
+          else
+            artifactBasename="llvm-${CIRCLE_TAG:5}-$CI_OS-x86_64$assertsSuffix"
+          fi
+          mv llvm-x64 $artifactBasename
+          XZ_OPT=-9 tar -cJf "artifacts/$artifactBasename.tar.xz" $artifactBasename
+    - run:
+        name: Pack source dir
+        command: |
+          cd ..
+          if [[ "$CI_OS" = "linux" && "$LLVM_ENABLE_ASSERTIONS" = "OFF" ]]; then
+            if [ -z "$CIRCLE_TAG" ]; then
+              artifactBasename="llvm-${CIRCLE_SHA1:0:8}.src"
+            else
+              artifactBasename="llvm-${CIRCLE_TAG:5}.src"
+            fi
+            XZ_OPT=-9 tar -cJf "artifacts/$artifactBasename.tar.xz" --exclude-vcs --transform=s/project/$artifactBasename/ project
+          fi
+    - store_artifacts:
+        path: ../artifacts
+    - run:
+        name: Deploy to GitHub CI release
+        command: |
+          cd ..
+          if [ "$CI_OS" = "linux" ]; then
+            curl -L -o github-release.tar.bz2 https://github.com/aktau/github-release/releases/download/v0.7.2/linux-amd64-github-release.tar.bz2
+          else
+            curl -L -o github-release.tar.bz2 https://github.com/aktau/github-release/releases/download/v0.7.2/darwin-amd64-github-release.tar.bz2
+          fi
+          tar -xf github-release.tar.bz2 --strip 3
+          if [ -z "$CIRCLE_TAG" ]; then CIRCLE_TAG="CI"; fi
+          # Note: needs GITHUB_TOKEN environment variable
+          ./github-release upload --user ldc-developers --repo llvm --tag $CIRCLE_TAG --name "$(cd artifacts && ls llvm-*x86_64*.tar.xz)" --file artifacts/llvm-*x86_64*.tar.xz
+          if [[ "$CI_OS" = "linux" && "$LLVM_ENABLE_ASSERTIONS" = "OFF" ]]; then
+            ./github-release upload --user ldc-developers --repo llvm --tag $CIRCLE_TAG --name "$(cd artifacts && ls llvm-*src.tar.xz)" --file artifacts/llvm-*src.tar.xz
+          fi
+
+version: 2
+jobs:
+  build-linux:
+    <<: *commonSteps
+    docker:
+      - image: ubuntu:14.04
+    environment:
+      - CI_OS: "linux"
+      - LLVM_ENABLE_ASSERTIONS: "OFF"
+  build-linux-withAsserts:
+    <<: *commonSteps
+    docker:
+      - image: ubuntu:14.04
+    environment:
+      - CI_OS: "linux"
+      - LLVM_ENABLE_ASSERTIONS: "ON"
+  build-osx:
+    <<: *commonSteps
+    macos:
+      xcode: "9.0"
+    environment:
+      - CI_OS: "osx"
+      - MACOSX_DEPLOYMENT_TARGET: 10.8
+      - USE_LIBCPP: "true"
+      - LLVM_ENABLE_ASSERTIONS: "OFF"
+  build-osx-withAsserts:
+    <<: *commonSteps
+    macos:
+      xcode: "9.0"
+    environment:
+      - CI_OS: "osx"
+      - MACOSX_DEPLOYMENT_TARGET: 10.8
+      - USE_LIBCPP: "true"
+      - LLVM_ENABLE_ASSERTIONS: "ON"
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - build-linux:
+          # This is required to also trigger the job after pushing a tag.
+          filters:
+            tags:
+              only: /.*/
+      - build-osx:
+          filters:
+            tags:
+              only: /.*/
+      - build-linux-withAsserts:
+          filters:
+            tags:
+              only: /.*/
+      - build-osx-withAsserts:
+          filters:
+            tags:
+              only: /.*/
