@@ -63,9 +63,22 @@ after_build:
         cd "c:\projects\LLVM-$Env:APPVEYOR_JOB_ARCH"
         del bin\ld.lld.exe
         del bin\lld.exe
-        $artifactFilename = "LLVM-$Env:APPVEYOR_JOB_ARCH.7z"
+        $artifactFilename = "llvm-$Env:APPVEYOR_REPO_COMMIT-windows-$Env:APPVEYOR_JOB_ARCH.7z"
         7z a "..\$artifactFilename" * > $null
         cd ..
         Push-AppveyorArtifact $artifactFilename
 
 test: off
+
+#---------------------------------#
+#     deployment configuration    #
+#---------------------------------#
+
+deploy:
+  - provider: GitHub
+    release: CI
+    description: "Latest successful CI builds"
+    prerelease: true
+    auth_token:
+      secure: qnbD8agL9mr0SFvy/sMkR2E29oQQ427T5zYwVVZkjRS3IZ361tG+9jlSiyEkyULy
+    artifact: llvm-$(APPVEYOR_REPO_COMMIT)-windows-$(APPVEYOR_JOB_ARCH).7z

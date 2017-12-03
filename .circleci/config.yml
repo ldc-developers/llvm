@@ -1,0 +1,74 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: ubuntu:14.04
+    steps:
+      - run:
+          name: Install basic dependencies
+          command: |
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get -y update
+            apt-get -yq install software-properties-common
+            add-apt-repository -y ppa:ubuntu-toolchain-r/test
+            apt-get -y update
+            apt-get -yq install curl git-core g++-6 binutils-dev ninja-build
+            echo "export CC=gcc-6" >> $BASH_ENV
+            echo "export CXX=g++-6" >> $BASH_ENV
+      - checkout
+      - run:
+          name: Checkout git submodules
+          command: git submodule update --init --recursive
+      - run:
+          name: Install CMake
+          command: |
+            curl -L -o cmake-x64.tar.gz https://cmake.org/files/v3.10/cmake-3.10.0-Linux-x86_64.tar.gz
+            mkdir cmake-x64
+            tar -xf cmake-x64.tar.gz --strip 1 -C cmake-x64
+            echo "export PATH=$PWD/cmake-x64/bin:$PATH" >> $BASH_ENV
+      - run:
+          name: Build LLVM
+          command: |
+            ninja --version
+            cmake --version
+            mkdir ninja-llvm
+            cd ninja-llvm
+            cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(dirname $PWD)/llvm-x64 -DLLVM_TARGETS_TO_BUILD="X86;AArch64;ARM;PowerPC;NVPTX" -DLLVM_BINUTILS_INCDIR=/usr/include -DCMAKE_CXX_FLAGS=-static-libstdc++ ..
+            ninja -j3 install
+            cd ..
+      - run:
+          name: Build compiler-rt & libFuzzer
+          command: |
+            export LLVM_VERSION=$(llvm-x64/bin/llvm-config --version)
+            export LLVM_VERSION=${LLVM_VERSION:0:5}
+            echo "$LLVM_VERSION"
+            # Download & extract compiler-rt
+            curl -L -o compiler-rt.src.tar.xz http://releases.llvm.org/$LLVM_VERSION/compiler-rt-$LLVM_VERSION.src.tar.xz
+            mkdir compiler-rt
+            tar -xpf compiler-rt.src.tar.xz --strip 1 -C compiler-rt
+            # Build compiler-rt
+            mkdir ninja-compiler-rt
+            cd ninja-compiler-rt
+            cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(dirname $PWD)/llvm-x64/lib/clang/$LLVM_VERSION -DLLVM_CONFIG_PATH=$(dirname $PWD)/llvm-x64/bin/llvm-config ../compiler-rt
+            ninja -j3 install
+            cd ..
+            # Build libFuzzer
+            cd lib/Fuzzer
+            ./build.sh
+            cd ../..
+            cp lib/Fuzzer/libFuzzer.a llvm-x64/lib
+      - run:
+          name: Pack installation dir
+          command: |
+            cd llvm-x64
+            tar -cJf ../llvm-${CIRCLE_SHA1}-linux-x86_64.tar.xz *
+            cd ..
+      - store_artifacts:
+          path: llvm-${CIRCLE_SHA1}-linux-x86_64.tar.xz
+      - run:
+          name: Deploy to GitHub CI release
+          command: |
+            curl -L -o github-release.tar.bz2 https://github.com/aktau/github-release/releases/download/v0.7.2/linux-amd64-github-release.tar.bz2
+            tar -xf github-release.tar.bz2 --strip 3
+            # Note: needs GITHUB_TOKEN environment variable
+            ./github-release upload --user ldc-developers --repo llvm --tag CI --name llvm-${CIRCLE_SHA1}-linux-x86_64.tar.xz --file llvm-${CIRCLE_SHA1}-linux-x86_64.tar.xz --description 'built on $(date "+%Y%m%d")'
