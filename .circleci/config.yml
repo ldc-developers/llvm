@@ -36,7 +36,7 @@ commonSteps: &commonSteps
         name: Checkout git submodules
         command: git submodule update --init --recursive
     - run:
-        name: Build LLVM
+        name: Build LLVM incl. LLD and compiler-rt
         command: |
           cd ..
           echo "$PATH"
@@ -49,21 +49,7 @@ commonSteps: &commonSteps
           else
             extraCMakeFlags="-DLLVM_ENABLE_LIBCXX=True -DHAVE_FUTIMENS=0"
           fi
-          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(dirname $PWD)/llvm-x64 -DLLVM_TARGETS_TO_BUILD="X86;AArch64;ARM;PowerPC;NVPTX" -DLLVM_ENABLE_ASSERTIONS=$LLVM_ENABLE_ASSERTIONS $extraCMakeFlags $CIRCLE_WORKING_DIRECTORY
-          ninja -j3 install
-          cd ..
-    - run:
-        name: Build compiler-rt
-        command: |
-          cd ..
-          LLVM_VERSION=$(llvm-x64/bin/llvm-config --version)
-          LLVM_VERSION=${LLVM_VERSION:0:5}
-          echo "$LLVM_VERSION"
-          curl -OL http://releases.llvm.org/$LLVM_VERSION/compiler-rt-$LLVM_VERSION.src.tar.xz
-          tar -xf compiler-rt-$LLVM_VERSION.src.tar.xz --no-same-owner
-          mkdir ninja-compiler-rt
-          cd ninja-compiler-rt
-          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(dirname $PWD)/llvm-x64/lib/clang/$LLVM_VERSION -DLLVM_CONFIG_PATH=$(dirname $PWD)/llvm-x64/bin/llvm-config ../compiler-rt-$LLVM_VERSION.src
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(dirname $PWD)/llvm-x64 -DLLVM_TARGETS_TO_BUILD="X86;AArch64;ARM;PowerPC;NVPTX" -DLLVM_ENABLE_ASSERTIONS=$LLVM_ENABLE_ASSERTIONS -DCOMPILER_RT_INCLUDE_TESTS=OFF $extraCMakeFlags $CIRCLE_WORKING_DIRECTORY
           ninja -j3 install
           cd ..
     - run:
