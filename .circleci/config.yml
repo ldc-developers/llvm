@@ -49,7 +49,15 @@ commonSteps: &commonSteps
           else
             extraCMakeFlags="-DLLVM_ENABLE_LIBCXX=True -DHAVE_FUTIMENS=0"
           fi
-          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(dirname $PWD)/llvm-x64 -DLLVM_TARGETS_TO_BUILD="X86;AArch64;ARM;PowerPC;NVPTX" -DLLVM_ENABLE_ASSERTIONS=$LLVM_ENABLE_ASSERTIONS -DCOMPILER_RT_INCLUDE_TESTS=OFF $extraCMakeFlags $CIRCLE_WORKING_DIRECTORY
+          cmake -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$(dirname $PWD)/llvm-x64 \
+            -DLLVM_TARGETS_TO_BUILD="AArch64;ARM;Mips;MSP430;NVPTX;PowerPC;X86" \
+            -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="RISCV;WebAssembly" \
+            -DLLVM_ENABLE_ASSERTIONS=$LLVM_ENABLE_ASSERTIONS \
+            -DCOMPILER_RT_INCLUDE_TESTS=OFF \
+            $extraCMakeFlags \
+            $CIRCLE_WORKING_DIRECTORY
           ninja -j3 install
           cd ..
     - run:
