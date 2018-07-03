@@ -3968,6 +3968,31 @@ AArch64TargetLowering::LowerELFGlobalTLSAddress(SDValue Op,
   return DAG.getNode(ISD::ADD, DL, PtrVT, ThreadBase, TPOff);
 }
 
+SDValue
+AArch64TargetLowering::LowerAndroidGlobalTLSAddress(SDValue Op,
+                                                    SelectionDAG &DAG) const {
+  assert(Subtarget->isTargetELF() && "This function expects an ELF target");
+  SDLoc DL(Op);
+  SDValue Result = LowerGlobalAddress(Op, DAG);
+  SDValue Chain = DAG.getEntryNode();
+  ArgListTy Args;
+  ArgListEntry Entry;
+  Type *Ty = (Type *)Type::getInt64Ty(*DAG.getContext());
+  Entry.Node = Result;
+  Entry.Ty = Ty;
+  Args.push_back(Entry);
+
+  // copied, modified from ARMTargetLowering::LowerToTLSGeneralDynamicModel
+  TargetLowering::CallLoweringInfo CLI(DAG);
+  CLI.setDebugLoc(DL).setChain(Chain).setLibCallee(
+      CallingConv::C, Ty,
+      DAG.getExternalSymbol("__tls_get_addr",
+                            getPointerTy(DAG.getDataLayout())),
+      std::move(Args));
+  std::pair<SDValue, SDValue> CallResult = LowerCallTo(CLI);
+  return CallResult.first;
+}
+
 SDValue AArch64TargetLowering::LowerGlobalTLSAddress(SDValue Op,
                                                      SelectionDAG &DAG) const {
   const GlobalAddressSDNode *GA = cast<GlobalAddressSDNode>(Op);
@@ -3976,8 +4001,12 @@ SDValue AArch64TargetLowering::LowerGlobalTLSAddress(SDValue Op,
 
   if (Subtarget->isTargetDarwin())
     return LowerDarwinGlobalTLSAddress(Op, DAG);
-  if (Subtarget->isTargetELF())
-    return LowerELFGlobalTLSAddress(Op, DAG);
+  if (Subtarget->isTargetELF()) {
+    if (Subtarget->isTargetAndroid())
+      return LowerAndroidGlobalTLSAddress(Op, DAG); // LDC
+    else
+      return LowerELFGlobalTLSAddress(Op, DAG);
+  }
 
   llvm_unreachable("Unexpected platform trying to use TLS");
 }
