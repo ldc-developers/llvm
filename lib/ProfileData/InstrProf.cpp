@@ -311,9 +311,14 @@ GlobalVariable *createPGOFuncNameVar(Module &M,
     Linkage = GlobalValue::LinkOnceAnyLinkage;
   else if (Linkage == GlobalValue::AvailableExternallyLinkage)
     Linkage = GlobalValue::LinkOnceODRLinkage;
+  /* LDC: use `internal` instead of `private` linkage (still local, but allows
+          for COMDATs, and is required for Windows)
   else if (Linkage == GlobalValue::InternalLinkage ||
            Linkage == GlobalValue::ExternalLinkage)
     Linkage = GlobalValue::PrivateLinkage;
+  */
+  else if (Linkage == GlobalValue::ExternalLinkage)
+    Linkage = GlobalValue::InternalLinkage;
 
   auto *Value =
       ConstantDataArray::getString(M.getContext(), PGOFuncName, false);
