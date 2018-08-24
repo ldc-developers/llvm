@@ -1,0 +1,57 @@
+language: c
+
+compiler:
+  - gcc
+
+runtime:
+  nodePool: shippable_shared_aarch64
+
+env:
+  - LLVM_ENABLE_ASSERTIONS=ON
+  - LLVM_ENABLE_ASSERTIONS=OFF
+
+build:
+  ci:
+    # Install dependencies.
+    - export DEBIAN_FRONTEND=noninteractive
+    - apt-get -y update
+    - apt-get -yq install binutils-dev cmake curl git-core ninja-build p7zip-full
+    - update-alternatives --install /usr/bin/ld ld /usr/bin/ld.gold 99
+    # Build LLVM incl. LLD and compiler-rt.
+    - git submodule update --init --recursive
+    - mkdir ninja-llvm
+    - cd ninja-llvm
+    - |
+      cmake -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=$PWD/../llvm-install \
+        -DLLVM_TARGETS_TO_BUILD="AArch64;ARM" \
+        -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="WebAssembly" \
+        -DLLVM_ENABLE_ASSERTIONS=$LLVM_ENABLE_ASSERTIONS \
+        -DCOMPILER_RT_INCLUDE_TESTS=OFF \
+        -DLLVM_BINUTILS_INCDIR=/usr/include \
+        -DCMAKE_CXX_FLAGS='-static-libstdc++ -Wno-class-memaccess -Wno-cast-function-type' \
+        ..
+    - ninja install
+    - cd ..
+    # Pack installation dir.
+    - |
+      assertsSuffix=""
+      if [ "$LLVM_ENABLE_ASSERTIONS" = "ON" ]; then assertsSuffix="-withAsserts"; fi
+      if [ "$IS_GIT_TAG" = "false" ]; then
+        artifactBasename="llvm-${COMMIT:0:8}-linux-aarch64$assertsSuffix-$(date "+%Y%m%d")"
+      else
+        artifactBasename="llvm-${GIT_TAG_NAME:5}-linux-aarch64$assertsSuffix"
+      fi
+      mv llvm-install $artifactBasename
+      tar -cf - $artifactBasename | 7za a $artifactBasename.tar.xz -si -txz -mx9
+      ls -l $artifactBasename.tar.xz
+
+integrations:
+  notifications:
+    - integrationName: email
+      type: email
+      on_success: never
+      on_failure: never
+      on_cancel: never
+      on_pull_request: never
