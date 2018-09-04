@@ -54,7 +54,7 @@ build:
       if [ "$IS_GIT_TAG" = "false" ]; then
         releaseTag="CI"
       else
-        releaseTag=${GIT_TAG_NAME:5}
+        releaseTag="$GIT_TAG_NAME"
       fi
       releaseID=$(curl -s https://api.github.com/repos/ldc-developers/llvm/releases/tags/$releaseTag | grep -m 1 '^  "id":')
       releaseID=${releaseID:8:-1}
