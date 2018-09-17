@@ -1,0 +1,76 @@
+language: c
+
+compiler:
+  - gcc
+
+runtime:
+  nodePool: shippable_shared_aarch64
+
+env:
+  global:
+    - secure: OuhkRMNLWCzMcJdPrUtvyo78/NqOtP1WHEfVViD5oCHIFr7rTjOTRFC+1Tcal//Z9XoqlGTBSfthqn6Z8QemqdljeVSXJgb9zXJMrq4Hl/hWrNhJ/M1m/rh30EQYnAzFyiTGN9yuzOLArLDq1Emv2dzDRpZybrx6FpSvo+hm3GQZNW55+KUu5uUoCsKZwSIjytgJPuec/sTOkV81OP2bszwqmvh+Xhb1UT4ukYlDKK3B+uggKc7MCnOWiYBkh5fsNmEjUiBS3tj4B2nD4rTv0isDucZJTe5aHbOFhjRi5Yh4yk4qxi4WqwOHYDTIU4rzEOuOKihVeo52IayuJE+4Iw==
+  matrix:
+    - LLVM_ENABLE_ASSERTIONS=ON
+    - LLVM_ENABLE_ASSERTIONS=OFF
+
+build:
+  ci:
+    # Install dependencies.
+    - export DEBIAN_FRONTEND=noninteractive
+    - apt-get -y update
+    - apt-get -yq install binutils-dev cmake curl git-core ninja-build p7zip-full
+    - update-alternatives --install /usr/bin/ld ld /usr/bin/ld.gold 99
+    # Build LLVM incl. LLD and compiler-rt.
+    - git submodule update --init --recursive
+    - mkdir ninja-llvm
+    - cd ninja-llvm
+    - |
+      cmake -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=$PWD/../llvm-install \
+        -DLLVM_TARGETS_TO_BUILD="AArch64;ARM" \
+        -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="WebAssembly" \
+        -DLLVM_ENABLE_ASSERTIONS=$LLVM_ENABLE_ASSERTIONS \
+        -DCOMPILER_RT_INCLUDE_TESTS=OFF \
+        -DLLVM_BINUTILS_INCDIR=/usr/include \
+        -DCMAKE_CXX_FLAGS='-static-libstdc++ -Wno-class-memaccess -Wno-cast-function-type' \
+        ..
+    - ninja install
+    - cd ..
+    # Pack installation dir.
+    - |
+      assertsSuffix=""
+      if [ "$LLVM_ENABLE_ASSERTIONS" = "ON" ]; then assertsSuffix="-withAsserts"; fi
+      if [ "$IS_GIT_TAG" = "false" ]; then
+        artifactBasename="llvm-${COMMIT:0:8}-linux-aarch64$assertsSuffix-$(date "+%Y%m%d")"
+      else
+        artifactBasename="llvm-${GIT_TAG_NAME:5}-linux-aarch64$assertsSuffix"
+      fi
+      mv llvm-install $artifactBasename
+      tar -cf - $artifactBasename | 7za a $artifactBasename.tar.xz -si -txz -mx9
+      ls -l $artifactBasename.tar.xz
+    # Upload to GitHub.
+    - |
+      if [ "$IS_GIT_TAG" = "false" ]; then
+        releaseTag="CI"
+      else
+        releaseTag="$GIT_TAG_NAME"
+      fi
+      releaseID=$(curl -s https://api.github.com/repos/ldc-developers/llvm/releases/tags/$releaseTag | grep -m 1 '^  "id":')
+      releaseID=${releaseID:8:-1}
+      artifact=$(ls llvm-*.tar.xz)
+      echo "Uploading $artifact to GitHub release $releaseTag ($releaseID)..."
+      curl -s \
+        -H "Authorization: token $GITHUB_TOKEN" \
+        -H "Content-Type: application/octet-stream" \
+        --data-binary @$artifact \
+        https://uploads.github.com/repos/ldc-developers/llvm/releases/$releaseID/assets?name=$artifact
+
+integrations:
+  notifications:
+    - integrationName: email
+      type: email
+      on_success: never
+      on_failure: never
+      on_cancel: never
+      on_pull_request: never
