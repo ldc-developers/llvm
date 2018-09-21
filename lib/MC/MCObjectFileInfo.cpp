@@ -497,14 +497,12 @@ void MCObjectFileInfo::initELFMCObjectFileInfo(const Triple &T, bool Large) {
   ReadOnlySection =
       Ctx->getELFSection(".rodata", ELF::SHT_PROGBITS, ELF::SHF_ALLOC);
 
-  // LDC
-  const auto tlsFlag = (!getTargetTriple().isAndroid() ? ELF::SHF_TLS : 0);
+  TLSDataSection =
+      Ctx->getELFSection(".tdata", ELF::SHT_PROGBITS,
+                         ELF::SHF_ALLOC | ELF::SHF_TLS | ELF::SHF_WRITE);
 
-  TLSDataSection = Ctx->getELFSection(
-      ".tdata", ELF::SHT_PROGBITS, ELF::SHF_ALLOC | tlsFlag | ELF::SHF_WRITE);
-
-  TLSBSSSection = Ctx->getELFSection(".tbss", ELF::SHT_NOBITS,
-                                     ELF::SHF_ALLOC | tlsFlag | ELF::SHF_WRITE);
+  TLSBSSSection = Ctx->getELFSection(
+      ".tbss", ELF::SHT_NOBITS, ELF::SHF_ALLOC | ELF::SHF_TLS | ELF::SHF_WRITE);
 
   DataRelROSection = Ctx->getELFSection(".data.rel.ro", ELF::SHT_PROGBITS,
                                         ELF::SHF_ALLOC | ELF::SHF_WRITE);

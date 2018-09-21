@@ -232,9 +232,8 @@ const MCExpr *TargetLoweringObjectFileELF::getTTypeGlobalReference(
                                                            MMI, Streamer);
 }
 
-static SectionKind getELFKindForNamedSection(StringRef Name, SectionKind K,
-                                             const Triple &TargetTriple) {
-  // N.B.: The defaults used in here are no the same ones used in MC.
+static SectionKind getELFKindForNamedSection(StringRef Name, SectionKind K) {
+  // N.B.: The defaults used in here are not the same ones used in MC.
   // We follow gcc, MC follows gas. For example, given ".section .eh_frame",
   // both gas and MC will produce a section with no flags. Given
   // section(".eh_frame") gcc will produce:
@@ -265,7 +264,6 @@ static SectionKind getELFKindForNamedSection(StringRef Name, SectionKind K,
     return SectionKind::getThreadData();
 
   if (Name == ".tbss" ||
-      (TargetTriple.isAndroid() && Name == ".tcommon") || // LDC
       Name.startswith(".tbss.") ||
       Name.startswith(".gnu.linkonce.tb.") ||
       Name.startswith(".llvm.linkonce.tb."))
@@ -296,7 +294,7 @@ static unsigned getELFSectionType(StringRef Name, SectionKind K) {
   return ELF::SHT_PROGBITS;
 }
 
-static unsigned getELFSectionFlags(SectionKind K, const Triple &TargetTriple) {
+static unsigned getELFSectionFlags(SectionKind K) {
   unsigned Flags = 0;
 
   if (!K.isMetadata())
@@ -311,7 +309,7 @@ static unsigned getELFSectionFlags(SectionKind K, const Triple &TargetTriple) {
   if (K.isWriteable())
     Flags |= ELF::SHF_WRITE;
 
-  if (K.isThreadLocal() && !TargetTriple.isAndroid()) // LDC
+  if (K.isThreadLocal())
     Flags |= ELF::SHF_TLS;
 
   if (K.isMergeableCString() || K.isMergeableConst())
@@ -377,10 +375,10 @@ MCSection *TargetLoweringObjectFileELF::getExplicitSectionGlobal(
   }
 
   // Infer section flags from the section name if we can.
-  Kind = getELFKindForNamedSection(SectionName, Kind, getTargetTriple());
+  Kind = getELFKindForNamedSection(SectionName, Kind);
 
   StringRef Group = "";
-  unsigned Flags = getELFSectionFlags(Kind, getTargetTriple());
+  unsigned Flags = getELFSectionFlags(Kind);
   if (const Comdat *C = getELFComdat(GO)) {
     Group = C->getName();
     Flags |= ELF::SHF_GROUP;
@@ -504,7 +502,7 @@ static MCSectionELF *selectELFSectionForGlobal(
 
 MCSection *TargetLoweringObjectFileELF::SelectSectionForGlobal(
     const GlobalObject *GO, SectionKind Kind, const TargetMachine &TM) const {
-  unsigned Flags = getELFSectionFlags(Kind, getTargetTriple());
+  unsigned Flags = getELFSectionFlags(Kind);
 
   // If we have -ffunction-section or -fdata-section then we should emit the
   // global value to a uniqued section specifically for it.

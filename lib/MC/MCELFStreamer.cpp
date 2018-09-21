@@ -448,12 +448,7 @@ void MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
       break;
     }
     getAssembler().registerSymbol(symRef.getSymbol());
-    // LDC
-    {
-      auto ofi = getContext().getObjectFileInfo();
-      if (!(ofi && ofi->getTargetTriple().isAndroid()))
-        cast<MCSymbolELF>(symRef.getSymbol()).setType(ELF::STT_TLS);
-    }
+    cast<MCSymbolELF>(symRef.getSymbol()).setType(ELF::STT_TLS);
     break;
   }
 
