@@ -4150,31 +4150,6 @@ AArch64TargetLowering::LowerELFGlobalTLSAddress(SDValue Op,
 }
 
 SDValue
-AArch64TargetLowering::LowerAndroidGlobalTLSAddress(SDValue Op,
-                                                    SelectionDAG &DAG) const {
-  assert(Subtarget->isTargetELF() && "This function expects an ELF target");
-  SDLoc DL(Op);
-  SDValue Result = LowerGlobalAddress(Op, DAG);
-  SDValue Chain = DAG.getEntryNode();
-  ArgListTy Args;
-  ArgListEntry Entry;
-  Type *Ty = (Type *)Type::getInt64Ty(*DAG.getContext());
-  Entry.Node = Result;
-  Entry.Ty = Ty;
-  Args.push_back(Entry);
-
-  // copied, modified from ARMTargetLowering::LowerToTLSGeneralDynamicModel
-  TargetLowering::CallLoweringInfo CLI(DAG);
-  CLI.setDebugLoc(DL).setChain(Chain).setLibCallee(
-      CallingConv::C, Ty,
-      DAG.getExternalSymbol("__tls_get_addr",
-                            getPointerTy(DAG.getDataLayout())),
-      std::move(Args));
-  std::pair<SDValue, SDValue> CallResult = LowerCallTo(CLI);
-  return CallResult.first;
-}
-
-SDValue
 AArch64TargetLowering::LowerWindowsGlobalTLSAddress(SDValue Op,
                                                     SelectionDAG &DAG) const {
   assert(Subtarget->isTargetWindows() && "Windows specific TLS lowering");
@@ -4243,7 +4218,7 @@ SDValue AArch64TargetLowering::LowerGlobalTLSAddress(SDValue Op,
     return LowerDarwinGlobalTLSAddress(Op, DAG);
   if (Subtarget->isTargetELF()) {
     if (Subtarget->isTargetAndroid())
-      return LowerAndroidGlobalTLSAddress(Op, DAG); // LDC
+      return LowerToAndroidEmulatedTLSAddress(Op, LowerGlobalAddress(Op, DAG), DAG, true); // LDC
     else
       return LowerELFGlobalTLSAddress(Op, DAG);
   }
