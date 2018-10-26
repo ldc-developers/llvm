@@ -50,6 +50,8 @@ install:
   - set PATH=%CD%\ninja;%PATH%
   - if "%APPVEYOR_BUILD_WORKER_IMAGE:~-4%" == "2017" call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\Common7\Tools\VsDevCmd.bat" -arch=%APPVEYOR_JOB_ARCH%
   - if "%APPVEYOR_BUILD_WORKER_IMAGE:~-4%" == "2015" call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" %APPVEYOR_JOB_ARCH%
+  # Let CMake configure 64-bit clang-cl for 32-bit code emission
+  - if "%APPVEYOR_JOB_ARCH%" == "x86" ( set "CFLAGS=-m32" && set "CXXFLAGS=-m32" && set "ASMFLAGS=-m32" )
   # Print environment info
   - set
   - msbuild /version
@@ -65,7 +67,7 @@ build_script:
   - cd c:\projects
   - md ninja-llvm
   - cd ninja-llvm
-  - cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=c:\projects\LLVM-%APPVEYOR_JOB_ARCH% -DLLVM_USE_CRT_RELEASE=MT -DLLVM_TARGETS_TO_BUILD=AArch64;ARM;Mips;MSP430;NVPTX;PowerPC;X86 -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=RISCV;WebAssembly -DLLVM_ENABLE_ASSERTIONS=%LLVM_ENABLE_ASSERTIONS% -DLLVM_DEFAULT_TARGET_TRIPLE=%LLVM_DEFAULT_TARGET_TRIPLE% -DCOMPILER_RT_INCLUDE_TESTS=OFF ..\llvm
+  - cmake -G Ninja -DCMAKE_C_COMPILER:PATH=clang-cl.exe -DCMAKE_CXX_COMPILER:PATH=clang-cl.exe -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=c:\projects\LLVM-%APPVEYOR_JOB_ARCH% -DLLVM_USE_CRT_RELEASE=MT -DLLVM_TARGETS_TO_BUILD=AArch64;ARM;Mips;MSP430;NVPTX;PowerPC;X86 -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=RISCV;WebAssembly -DLLVM_ENABLE_ASSERTIONS=%LLVM_ENABLE_ASSERTIONS% -DLLVM_DEFAULT_TARGET_TRIPLE=%LLVM_DEFAULT_TARGET_TRIPLE% -DCOMPILER_RT_INCLUDE_TESTS=OFF ..\llvm
   - ninja -j3 install
 
 after_build:
