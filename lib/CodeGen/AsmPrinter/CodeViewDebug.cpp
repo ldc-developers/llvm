@@ -252,21 +252,30 @@ static const DISubprogram *getQualifiedNameComponents(
 }
 
 static std::string getQualifiedName(ArrayRef<StringRef> QualifiedNameComponents,
-                                    StringRef TypeName) {
+                                    StringRef TypeName, StringRef Separator) {
   std::string FullyQualifiedName;
   for (StringRef QualifiedNameComponent :
        llvm::reverse(QualifiedNameComponents)) {
     FullyQualifiedName.append(QualifiedNameComponent);
-    FullyQualifiedName.append("::");
+    FullyQualifiedName.append(Separator);
   }
   FullyQualifiedName.append(TypeName);
   return FullyQualifiedName;
 }
 
-static std::string getFullyQualifiedName(const DIScope *Scope, StringRef Name) {
+static std::string getFullyQualifiedName(const DIScope *Scope, StringRef Name,
+                                         StringRef Separator) {
   SmallVector<StringRef, 5> QualifiedNameComponents;
   getQualifiedNameComponents(Scope, QualifiedNameComponents);
-  return getQualifiedName(QualifiedNameComponents, Name);
+  return getQualifiedName(QualifiedNameComponents, Name, Separator);
+}
+
+// Added for LDC: use `.` as scope separator for compile units with D language
+// tag.
+const char *CodeViewDebug::getScopeSeparator() const {
+  NamedMDNode *CUs = MMI->getModule()->getNamedMetadata("llvm.dbg.cu");
+  const DICompileUnit *CU = cast<DICompileUnit>(*CUs->operands().begin());
+  return CU->getSourceLanguage() == dwarf::DW_LANG_D ? "." : "::";
 }
 
 struct CodeViewDebug::TypeLoweringScope {
@@ -281,9 +290,10 @@ struct CodeViewDebug::TypeLoweringScope {
   CodeViewDebug &CVD;
 };
 
-static std::string getFullyQualifiedName(const DIScope *Ty) {
+static std::string getFullyQualifiedName(const DIScope *Ty,
+                                         StringRef Separator) {
   const DIScope *Scope = Ty->getScope().resolve();
-  return getFullyQualifiedName(Scope, getPrettyScopeName(Ty));
+  return getFullyQualifiedName(Scope, getPrettyScopeName(Ty), Separator);
 }
 
 TypeIndex CodeViewDebug::getScopeIndex(const DIScope *Scope) {
@@ -299,7 +309,7 @@ TypeIndex CodeViewDebug::getScopeIndex(const DIScope *Scope) {
     return I->second;
 
   // Build the fully qualified name of the scope.
-  std::string ScopeName = getFullyQualifiedName(Scope);
+  std::string ScopeName = getFullyQualifiedName(Scope, getScopeSeparator());
   StringIdRecord SID(TypeIndex(), ScopeName);
   auto TI = TypeTable.writeLeafType(SID);
   return recordTypeIndexForDINode(Scope, TI);
@@ -912,8 +922,8 @@ void CodeViewDebug::emitDebugInfoForFunction(const Function *GV,
   // If we have a display name, build the fully qualified name by walking the
   // chain of scopes.
   if (!SP->getName().empty())
-    FuncName =
-        getFullyQualifiedName(SP->getScope().resolve(), SP->getName());
+    FuncName = getFullyQualifiedName(SP->getScope().resolve(), SP->getName(),
+                                     getScopeSeparator());
 
   // If our DISubprogram name is empty, use the mangled name.
   if (FuncName.empty())
@@ -1301,8 +1311,8 @@ void CodeViewDebug::addToUDTs(const DIType *Ty) {
   const DISubprogram *ClosestSubprogram = getQualifiedNameComponents(
       Ty->getScope().resolve(), QualifiedNameComponents);
 
-  std::string FullyQualifiedName =
-      getQualifiedName(QualifiedNameComponents, getPrettyScopeName(Ty));
+  std::string FullyQualifiedName = getQualifiedName(
+      QualifiedNameComponents, getPrettyScopeName(Ty), getScopeSeparator());
 
   if (ClosestSubprogram == nullptr) {
     GlobalUDTs.emplace_back(std::move(FullyQualifiedName), Ty);
@@ -1881,7 +1891,7 @@ TypeIndex CodeViewDebug::lowerTypeEnum(const DICompositeType *Ty) {
     FTI = TypeTable.insertRecord(ContinuationBuilder);
   }
 
-  std::string FullName = getFullyQualifiedName(Ty);
+  std::string FullName = getFullyQualifiedName(Ty, getScopeSeparator());
 
   EnumRecord ER(EnumeratorCount, CO, FTI, FullName, Ty->getIdentifier(),
                 getTypeIndex(Ty->getBaseType()));
@@ -2031,7 +2041,7 @@ TypeIndex CodeViewDebug::lowerTypeClass(const DICompositeType *Ty) {
   TypeRecordKind Kind = getRecordKind(Ty);
   ClassOptions CO =
       ClassOptions::ForwardReference | getCommonClassOptions(Ty);
-  std::string FullName = getFullyQualifiedName(Ty);
+  std::string FullName = getFullyQualifiedName(Ty, getScopeSeparator());
   ClassRecord CR(Kind, 0, CO, TypeIndex(), TypeIndex(), TypeIndex(), 0,
                  FullName, Ty->getIdentifier());
   TypeIndex FwdDeclTI = TypeTable.writeLeafType(CR);
@@ -2054,7 +2064,7 @@ TypeIndex CodeViewDebug::lowerCompleteTypeClass(const DICompositeType *Ty) {
   if (ContainsNestedClass)
     CO |= ClassOptions::ContainsNestedClass;
 
-  std::string FullName = getFullyQualifiedName(Ty);
+  std::string FullName = getFullyQualifiedName(Ty, getScopeSeparator());
 
   uint64_t SizeInBytes = Ty->getSizeInBits() / 8;
 
@@ -2076,7 +2086,7 @@ TypeIndex CodeViewDebug::lowerTypeUnion(const DICompositeType *Ty) {
 
   ClassOptions CO =
       ClassOptions::ForwardReference | getCommonClassOptions(Ty);
-  std::string FullName = getFullyQualifiedName(Ty);
+  std::string FullName = getFullyQualifiedName(Ty, getScopeSeparator());
   UnionRecord UR(0, CO, TypeIndex(), 0, FullName, Ty->getIdentifier());
   TypeIndex FwdDeclTI = TypeTable.writeLeafType(UR);
   if (!Ty->isForwardDecl())
@@ -2096,7 +2106,7 @@ TypeIndex CodeViewDebug::lowerCompleteTypeUnion(const DICompositeType *Ty) {
     CO |= ClassOptions::ContainsNestedClass;
 
   uint64_t SizeInBytes = Ty->getSizeInBits() / 8;
-  std::string FullName = getFullyQualifiedName(Ty);
+  std::string FullName = getFullyQualifiedName(Ty, getScopeSeparator());
 
   UnionRecord UR(FieldCount, CO, FieldTI, SizeInBytes, FullName,
                  Ty->getIdentifier());
