@@ -1,0 +1,73 @@
+variables:
+  LLVM_TARGETS_TO_BUILD: AArch64;ARM;Mips;MSP430;NVPTX;PowerPC;X86
+  LLVM_EXPERIMENTAL_TARGETS_TO_BUILD: RISCV;WebAssembly
+
+jobs:
+- job: Windows
+  timeoutInMinutes: 120
+  pool:
+    vmImage: 'vs2017-win2016'
+  variables:
+    CLANG_VERSION: 7.0.1
+    VSINSTALLDIR: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\
+    EXTRA_CMAKE_FLAGS: -DLLVM_USE_CRT_RELEASE=MT
+  strategy:
+    matrix:
+      x64:
+        ARCH: x64
+        LLVM_DEFAULT_TARGET_TRIPLE: x86_64-pc-windows-msvc
+        LLVM_ENABLE_ASSERTIONS: OFF
+      x64_withAsserts:
+        ARCH: x64
+        LLVM_DEFAULT_TARGET_TRIPLE: x86_64-pc-windows-msvc
+        LLVM_ENABLE_ASSERTIONS: ON
+      x86:
+        ARCH: x86
+        LLVM_DEFAULT_TARGET_TRIPLE: i686-pc-windows-msvc
+        LLVM_ENABLE_ASSERTIONS: OFF
+        # Let CMake configure 64-bit clang-cl for 32-bit code emission.
+        CFLAGS: -m32
+        CXXFLAGS: -m32
+        ASMFLAGS: -m32
+      x86_withAsserts:
+        ARCH: x86
+        LLVM_DEFAULT_TARGET_TRIPLE: i686-pc-windows-msvc
+        LLVM_ENABLE_ASSERTIONS: ON
+        CFLAGS: -m32
+        CXXFLAGS: -m32
+        ASMFLAGS: -m32
+  steps:
+    - template: .azure-pipelines/windows.yml
+
+- job: Linux
+  timeoutInMinutes: 120
+  pool:
+    vmImage: 'ubuntu-16.04'
+  variables:
+    CI_OS: linux
+    EXTRA_CMAKE_FLAGS: -DLLVM_BINUTILS_INCDIR=/usr/include -DCMAKE_CXX_FLAGS=-static-libstdc++
+  strategy:
+    matrix:
+      x64:
+        LLVM_ENABLE_ASSERTIONS: OFF
+      x64_withAsserts:
+        LLVM_ENABLE_ASSERTIONS: ON
+  steps:
+    - template: .azure-pipelines/posix.yml
+
+- job: macOS
+  timeoutInMinutes: 120
+  pool:
+    vmImage: 'macOS-10.13'
+  variables:
+    CI_OS: osx
+    EXTRA_CMAKE_FLAGS: -DHAVE_FUTIMENS=0
+    MACOSX_DEPLOYMENT_TARGET: 10.9
+  strategy:
+    matrix:
+      x64:
+        LLVM_ENABLE_ASSERTIONS: OFF
+      x64_withAsserts:
+        LLVM_ENABLE_ASSERTIONS: ON
+  steps:
+    - template: .azure-pipelines/posix.yml
