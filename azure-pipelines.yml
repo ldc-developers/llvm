@@ -1,0 +1,152 @@
+variables:
+  LLVM_TARGETS_TO_BUILD: AArch64;ARM;Mips;MSP430;NVPTX;PowerPC;X86
+  LLVM_EXPERIMENTAL_TARGETS_TO_BUILD: RISCV;WebAssembly
+  # Prevent dependencies on some purely optional libraries.
+  BASE_CMAKE_FLAGS: -DLLVM_ENABLE_TERMINFO=OFF -DLLVM_ENABLE_LIBEDIT=OFF
+
+# Although tags are supposed to trigger builds by default, they don't.
+trigger:
+  branches:
+    include: ['*']
+  tags:
+    include:
+      - ldc-v*
+
+jobs:
+- job: Windows
+  timeoutInMinutes: 180
+  pool:
+    vmImage: 'vs2017-win2016'
+  variables:
+    CLANG_VERSION: 7.0.1
+    VSINSTALLDIR: C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\
+    EXTRA_CMAKE_FLAGS: -DLLVM_USE_CRT_RELEASE=MT
+  strategy:
+    matrix:
+      x64:
+        ARCH: x64
+        LLVM_DEFAULT_TARGET_TRIPLE: x86_64-pc-windows-msvc
+        LLVM_ENABLE_ASSERTIONS: OFF
+      x64_withAsserts:
+        ARCH: x64
+        LLVM_DEFAULT_TARGET_TRIPLE: x86_64-pc-windows-msvc
+        LLVM_ENABLE_ASSERTIONS: ON
+      x86:
+        ARCH: x86
+        LLVM_DEFAULT_TARGET_TRIPLE: i686-pc-windows-msvc
+        LLVM_ENABLE_ASSERTIONS: OFF
+        # Let CMake configure 64-bit clang-cl for 32-bit code emission.
+        CFLAGS: -m32
+        CXXFLAGS: -m32
+        ASMFLAGS: -m32
+      x86_withAsserts:
+        ARCH: x86
+        LLVM_DEFAULT_TARGET_TRIPLE: i686-pc-windows-msvc
+        LLVM_ENABLE_ASSERTIONS: ON
+        CFLAGS: -m32
+        CXXFLAGS: -m32
+        ASMFLAGS: -m32
+  steps:
+    - template: .azure-pipelines/windows.yml
+
+- job: Linux
+  timeoutInMinutes: 180
+  pool:
+    vmImage: 'ubuntu-16.04'
+  variables:
+    CI_OS: linux
+    EXTRA_CMAKE_FLAGS: -DLLVM_BINUTILS_INCDIR=/usr/include -DCMAKE_CXX_FLAGS=-static-libstdc++
+  strategy:
+    matrix:
+      x64:
+        LLVM_ENABLE_ASSERTIONS: OFF
+      x64_withAsserts:
+        LLVM_ENABLE_ASSERTIONS: ON
+  steps:
+    - template: .azure-pipelines/posix.yml
+
+- job: macOS
+  timeoutInMinutes: 180
+  pool:
+    vmImage: 'macOS-10.13'
+  variables:
+    CI_OS: osx
+    EXTRA_CMAKE_FLAGS: -DHAVE_FUTIMENS=0
+    MACOSX_DEPLOYMENT_TARGET: 10.9
+  strategy:
+    matrix:
+      x64:
+        LLVM_ENABLE_ASSERTIONS: OFF
+      x64_withAsserts:
+        LLVM_ENABLE_ASSERTIONS: ON
+  steps:
+    - template: .azure-pipelines/posix.yml
+
+# Uploads the packages to a GitHub release.
+- job: Upload_to_GitHub
+  timeoutInMinutes: 30
+  pool:
+    vmImage: 'ubuntu-16.04'
+  dependsOn:
+    - Windows
+    - Linux
+    - macOS
+  # Only run for branches and tags, no PRs.
+  condition: and(succeeded(), or(startsWith(variables['Build.SourceBranch'], 'refs/heads/'), startsWith(variables['Build.SourceBranch'], 'refs/tags/')))
+  steps:
+    - checkout: none
+    - task: DownloadPipelineArtifact@0
+      inputs:
+        artifactName: windows-x64
+        targetPath: artifacts
+    - task: DownloadPipelineArtifact@0
+      inputs:
+        artifactName: windows-x64-withAsserts
+        targetPath: artifacts
+    - task: DownloadPipelineArtifact@0
+      inputs:
+        artifactName: windows-x86
+        targetPath: artifacts
+    - task: DownloadPipelineArtifact@0
+      inputs:
+        artifactName: windows-x86-withAsserts
+        targetPath: artifacts
+    - task: DownloadPipelineArtifact@0
+      inputs:
+        artifactName: linux-x86_64
+        targetPath: artifacts
+    - task: DownloadPipelineArtifact@0
+      inputs:
+        artifactName: linux-x86_64-withAsserts
+        targetPath: artifacts
+    - task: DownloadPipelineArtifact@0
+      inputs:
+        artifactName: osx-x86_64
+        targetPath: artifacts
+    - task: DownloadPipelineArtifact@0
+      inputs:
+        artifactName: osx-x86_64-withAsserts
+        targetPath: artifacts
+    - bash: |
+        set -e
+        if [ "${BUILD_SOURCEBRANCH:0:10}" != "refs/tags/" ]; then
+          releaseTag=CI
+          isPreRelease=true
+        else
+          releaseTag=${BUILD_SOURCEBRANCH:10}
+          isPreRelease=false
+        fi
+        echo "##vso[task.setvariable variable=GITHUB_RELEASE_TAG]$releaseTag"
+        echo "##vso[task.setvariable variable=GITHUB_RELEASE_ISPRERELEASE]$isPreRelease"
+      displayName: Set GITHUB_RELEASE_{TAG,ISPRERELEASE} env variables
+    - task: GitHubRelease@0
+      inputs:
+        gitHubConnection: kinke
+        repositoryName: ldc-developers/llvm
+        action: edit
+        tag: $(GITHUB_RELEASE_TAG)
+        assets: artifacts/*
+        assetUploadMode: replace
+        isPreRelease: $(GITHUB_RELEASE_ISPRERELEASE)
+        addChangeLog: false
+      displayName: Upload artifacts to GitHub release
