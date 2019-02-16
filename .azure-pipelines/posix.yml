@@ -63,13 +63,13 @@ steps:
     cd ..
     if [[ "$CI_OS" = "linux" && "$LLVM_ENABLE_ASSERTIONS" = "OFF" ]]; then
       artifactName=llvm-$ARTIFACT_ID.src
-      XZ_OPT=-9 tar -cJf artifacts/$artifactName.tar.xz --exclude-vcs --transform=s,$BUILD_SOURCESDIRECTORY,$artifactName, $BUILD_SOURCESDIRECTORY
+      XZ_OPT=-9 tar -cJf artifacts/$artifactName.tar.xz --exclude-vcs --transform=s,${BUILD_SOURCESDIRECTORY:1},$artifactName, $BUILD_SOURCESDIRECTORY
     else
       echo 'Skipping'
     fi
   displayName: Pack source dir
 - task: PublishPipelineArtifact@0
   inputs:
-    artifactName: '$(CI_OS)-x64$(ASSERTS_SUFFIX)'
-    targetPath: '../artifacts'
+    artifactName: $(CI_OS)-x86_64$(ASSERTS_SUFFIX)
+    targetPath: ../artifacts
   displayName: Publish artifact(s)

@@ -37,7 +37,7 @@ steps:
   displayName: Build & install LLVM incl. LLD and compiler-rt
 - script: |
     cd ..
-    :: On Windows, the ld symlinks are copies
+    :: On Windows, the lld symlinks are copies
     rm install/bin/ld.lld.exe
     rm install/bin/ld64.lld.exe
     rm install/bin/lld.exe
@@ -61,6 +61,6 @@ steps:
   displayName: Pack installation dir
 - task: PublishPipelineArtifact@0
   inputs:
-    artifactName: 'windows-$(ARCH)$(ASSERTS_SUFFIX)'
-    targetPath: '..\artifacts'
+    artifactName: windows-$(ARCH)$(ASSERTS_SUFFIX)
+    targetPath: ../artifacts
   displayName: Publish artifact
