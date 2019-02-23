@@ -4,3 +4,6 @@
 [submodule "projects/compiler-rt"]
 	path = projects/compiler-rt
 	url = https://github.com/ldc-developers/compiler-rt.git
+[submodule "projects/SPIRV-LLVM-Translator"]
+	path = projects/SPIRV-LLVM-Translator
+	url = https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git
