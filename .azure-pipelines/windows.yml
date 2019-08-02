@@ -18,7 +18,7 @@ steps:
     7z x ../ninja.zip > nul
     cd ..
     :: Download & install clang
-    curl -L -o clang.exe http://releases.llvm.org/%CLANG_VERSION%/LLVM-%CLANG_VERSION%-win64.exe
+    curl -L -o clang.exe https://github.com/llvm/llvm-project/releases/download/llvmorg-%CLANG_VERSION%/LLVM-%CLANG_VERSION%-win64.exe
     clang.exe /S
   displayName: Install prerequisites
 - script: |
