@@ -64,21 +64,21 @@ build:
       set -e
       if [ "$IS_PULL_REQUEST" = "true" ]; then
         echo 'Skipping'
-        exit 0
-      fi
-      if [ "$IS_GIT_TAG" = "false" ]; then
-        releaseTag=CI
       else
-        releaseTag=$GIT_TAG_NAME
+        if [ "$IS_GIT_TAG" = "false" ]; then
+          releaseTag=CI
+        else
+          releaseTag=$GIT_TAG_NAME
+        fi
+        releaseID=$(curl -s https://api.github.com/repos/ldc-developers/llvm/releases/tags/$releaseTag | grep -m 1 '^  "id":')
+        releaseID=${releaseID:8:-1}
+        echo "Uploading $artifact to GitHub release $releaseTag ($releaseID)..."
+        curl -s \
+          -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Content-Type: application/octet-stream" \
+          --data-binary @$artifact \
+          https://uploads.github.com/repos/ldc-developers/llvm/releases/$releaseID/assets?name=$artifact
       fi
-      releaseID=$(curl -s https://api.github.com/repos/ldc-developers/llvm/releases/tags/$releaseTag | grep -m 1 '^  "id":')
-      releaseID=${releaseID:8:-1}
-      echo "Uploading $artifact to GitHub release $releaseTag ($releaseID)..."
-      curl -s \
-        -H "Authorization: token $GITHUB_TOKEN" \
-        -H "Content-Type: application/octet-stream" \
-        --data-binary @$artifact \
-        https://uploads.github.com/repos/ldc-developers/llvm/releases/$releaseID/assets?name=$artifact
 
 integrations:
   notifications:

@@ -2,24 +2,6 @@
 # environment variables aren't persisted across steps.
 
 steps:
-- checkout: self
-  submodules: true
-  fetchDepth: 50
-- script: |
-    set -ex
-    cd ..
-    if [ "$CI_OS" = "linux" ]; then
-      export DEBIAN_FRONTEND=noninteractive
-      sudo apt-get -q update
-      sudo apt-get -yq install \
-        git-core cmake ninja-build g++ binutils-dev python
-    else
-      # Download & extract Ninja
-      curl -L -o ninja-mac.zip https://github.com/ninja-build/ninja/releases/download/v1.9.0/ninja-mac.zip
-      mkdir ninja
-      tar -xf ninja-mac.zip -C ninja
-    fi
-  displayName: Install prerequisites
 - script: |
     set -ex
     cd ..
@@ -48,15 +30,15 @@ steps:
     if [ "$LLVM_ENABLE_ASSERTIONS" = "ON" ]; then
       ASSERTS_SUFFIX="-withAsserts"
     fi
-    artifactName=llvm-$ARTIFACT_ID-$CI_OS-x86_64$ASSERTS_SUFFIX
+    artifactName=llvm-$ARTIFACT_ID-$CI_OS-$ARCH$ASSERTS_SUFFIX
     mv install $artifactName
     mkdir artifacts
     chmod -R go=rX $artifactName
-    if [ "$CI_OS" = "linux" ]; then
-      XZ_OPT=-9 tar -cJf artifacts/$artifactName.tar.xz --owner=0 --group=0 $artifactName
-    else
+    if [ "$CI_OS" = "osx" ]; then
       sudo chown -R root:wheel $artifactName
       tar -cJf artifacts/$artifactName.tar.xz --options='compression-level=9' $artifactName
+    else
+      XZ_OPT=-9 tar -cJf artifacts/$artifactName.tar.xz --owner=0 --group=0 $artifactName
     fi
     # Persist the ARTIFACT_ID and ASSERTS_SUFFIX variables for future steps
     set +x
@@ -73,6 +55,6 @@ steps:
   condition: and(succeeded(), and(eq(variables['CI_OS'], 'linux'), eq(variables['LLVM_ENABLE_ASSERTIONS'], 'OFF')))
 - task: PublishPipelineArtifact@0
   inputs:
-    artifactName: $(CI_OS)-x86_64$(ASSERTS_SUFFIX)
+    artifactName: $(CI_OS)-$(ARCH)$(ASSERTS_SUFFIX)
     targetPath: ../artifacts
   displayName: Publish artifact(s)
