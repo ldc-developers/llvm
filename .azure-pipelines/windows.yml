@@ -32,7 +32,7 @@ steps:
     clang-cl --version
     mkdir build
     cd build
-    cmake -G Ninja %BUILD_SOURCESDIRECTORY% -DCMAKE_C_COMPILER:PATH=clang-cl.exe -DCMAKE_CXX_COMPILER:PATH=clang-cl.exe -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=%CD%/../install -DLLVM_TARGETS_TO_BUILD=%LLVM_TARGETS_TO_BUILD% -DLLVM_ENABLE_ASSERTIONS=%LLVM_ENABLE_ASSERTIONS% -DLLVM_DEFAULT_TARGET_TRIPLE=%LLVM_DEFAULT_TARGET_TRIPLE% %BASE_CMAKE_FLAGS% %EXTRA_CMAKE_FLAGS%
+    cmake -G Ninja %BUILD_SOURCESDIRECTORY% -DCMAKE_C_COMPILER:PATH=clang-cl.exe -DCMAKE_CXX_COMPILER:PATH=clang-cl.exe -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=%CD%/../install -DLLVM_TARGETS_TO_BUILD=%LLVM_TARGETS_TO_BUILD% -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=%LLVM_EXPERIMENTAL_TARGETS_TO_BUILD% -DLLVM_ENABLE_ASSERTIONS=%LLVM_ENABLE_ASSERTIONS% -DLLVM_DEFAULT_TARGET_TRIPLE=%LLVM_DEFAULT_TARGET_TRIPLE% %BASE_CMAKE_FLAGS% %EXTRA_CMAKE_FLAGS%
     ninja install
   displayName: Build & install LLVM incl. LLD, compiler-rt and the Khronos SPIRV-LLVM-Translator
 - script: |
@@ -61,8 +61,5 @@ steps:
     echo off
     echo ##vso[task.setvariable variable=ASSERTS_SUFFIX]%ASSERTS_SUFFIX%
   displayName: Pack installation dir
-- task: PublishPipelineArtifact@0
-  inputs:
-    artifactName: windows-$(ARCH)$(ASSERTS_SUFFIX)
-    targetPath: ../artifacts
-  displayName: Publish artifact
+- publish: ../artifacts
+  artifact: windows-$(ARCH)$(ASSERTS_SUFFIX)

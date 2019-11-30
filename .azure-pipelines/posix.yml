@@ -14,6 +14,7 @@ steps:
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=$PWD/../install \
       -DLLVM_TARGETS_TO_BUILD="$LLVM_TARGETS_TO_BUILD" \
+      -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="$LLVM_EXPERIMENTAL_TARGETS_TO_BUILD" \
       -DLLVM_ENABLE_ASSERTIONS=$LLVM_ENABLE_ASSERTIONS \
       $BASE_CMAKE_FLAGS $EXTRA_CMAKE_FLAGS
     ninja install
@@ -53,8 +54,5 @@ steps:
     XZ_OPT=-9 tar -cJf artifacts/$artifactName.tar.xz --exclude-vcs --owner=0 --group=0 --transform=s,${BUILD_SOURCESDIRECTORY:1},$artifactName, $BUILD_SOURCESDIRECTORY
   displayName: Pack source dir
   condition: and(succeeded(), and(eq(variables['CI_OS'], 'linux'), eq(variables['LLVM_ENABLE_ASSERTIONS'], 'OFF')))
-- task: PublishPipelineArtifact@0
-  inputs:
-    artifactName: $(CI_OS)-$(ARCH)$(ASSERTS_SUFFIX)
-    targetPath: ../artifacts
-  displayName: Publish artifact(s)
+- publish: ../artifacts
+  artifact: $(CI_OS)-$(ARCH)$(ASSERTS_SUFFIX)

@@ -1,5 +1,6 @@
 variables:
   LLVM_TARGETS_TO_BUILD: AArch64;ARM;Mips;MSP430;NVPTX;PowerPC;RISCV;WebAssembly;X86
+  LLVM_EXPERIMENTAL_TARGETS_TO_BUILD: AVR
   # Prevent dependencies on some purely optional libraries, and a dependency on clang
   # for compiler-rt and SPIRV-LLVM-Translator tests.
   BASE_CMAKE_FLAGS: -DLLVM_ENABLE_TERMINFO=OFF -DLLVM_ENABLE_LIBEDIT=OFF -DCOMPILER_RT_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_TESTS=OFF
@@ -77,7 +78,7 @@ jobs:
 - job: macOS
   timeoutInMinutes: 180
   pool:
-    vmImage: 'macOS-10.13'
+    vmImage: 'macOS-10.14'
   variables:
     CI_OS: osx
     ARCH: x86_64
@@ -103,16 +104,23 @@ jobs:
       displayName: Install prerequisites
     - template: .azure-pipelines/posix.yml
 
-- job: Android_armv7a
+- job: Android
   timeoutInMinutes: 180
   pool:
     vmImage: 'ubuntu-16.04'
   variables:
     CI_OS: android
-    ARCH: armv7a
     LLVM_TARGETS_TO_BUILD: AArch64;ARM;WebAssembly;X86
+    LLVM_EXPERIMENTAL_TARGETS_TO_BUILD: ''
     LLVM_ENABLE_ASSERTIONS: OFF
-    EXTRA_CMAKE_FLAGS: -DANDROID_ABI=armeabi-v7a -DANDROID_NATIVE_API_LEVEL=21 -DANDROID_STL=c++_static -DCMAKE_CROSSCOMPILING=True -DLLVM_TARGET_ARCH=ARM -DLLVM_DEFAULT_TARGET_TRIPLE=armv7a--linux-androideabi -DLLVM_ENABLE_PLUGINS=OFF
+  strategy:
+    matrix:
+      armv7a:
+        ARCH: armv7a
+        EXTRA_CMAKE_FLAGS: -DANDROID_ABI=armeabi-v7a -DANDROID_NATIVE_API_LEVEL=21 -DANDROID_STL=c++_static -DCMAKE_CROSSCOMPILING=True -DLLVM_TARGET_ARCH=ARM -DLLVM_DEFAULT_TARGET_TRIPLE=armv7a--linux-androideabi -DLLVM_ENABLE_PLUGINS=OFF
+      aarch64:
+        ARCH: aarch64
+        EXTRA_CMAKE_FLAGS: -DANDROID_ABI=arm64-v8a -DANDROID_NATIVE_API_LEVEL=21 -DANDROID_STL=c++_static -DCMAKE_CROSSCOMPILING=True -DLLVM_TARGET_ARCH=AArch64 -DLLVM_DEFAULT_TARGET_TRIPLE=aarch64--linux-android -DLLVM_ENABLE_PLUGINS=OFF -DSANITIZER_CXX_ABI=libc++
   steps:
     - checkout: self
       submodules: true
@@ -144,12 +152,12 @@ jobs:
         set -ex
         cd ..
         # Download & extract Android NDK
-        curl -OL https://dl.google.com/android/repository/android-ndk-r20-linux-x86_64.zip
-        unzip android-ndk-r20-linux-x86_64.zip > /dev/null
-        rm android-ndk-r20-linux-x86_64.zip
+        curl -OL https://dl.google.com/android/repository/android-ndk-r20b-linux-x86_64.zip
+        unzip android-ndk-r20b-linux-x86_64.zip > /dev/null
+        rm android-ndk-r20b-linux-x86_64.zip
         # The NDK toolchain file enforces `-g` as base C[XX] flag - remove it to
         # *significantly* reduce executable sizes
-        TOOLCHAIN_FILE=$PWD/android-ndk-r20/build/cmake/android.toolchain.cmake
+        TOOLCHAIN_FILE=$PWD/android-ndk-r20b/build/cmake/android.toolchain.cmake
         sed -i 's|^  -g$||' $TOOLCHAIN_FILE
         # Extend EXTRA_CMAKE_FLAGS for future steps
         set +x
@@ -166,56 +174,35 @@ jobs:
     - Windows
     - Linux
     - macOS
-    - Android_armv7a
+    - Android
   # Only run for branches and tags, no PRs.
   condition: and(succeeded(), or(startsWith(variables['Build.SourceBranch'], 'refs/heads/'), startsWith(variables['Build.SourceBranch'], 'refs/tags/')))
   steps:
     - checkout: none
-    - task: DownloadPipelineArtifact@0
+    - task: DownloadPipelineArtifact@2
       inputs:
-        artifactName: windows-x64
-        targetPath: artifacts
-    - task: DownloadPipelineArtifact@0
-      inputs:
-        artifactName: windows-x64-withAsserts
-        targetPath: artifacts
-    - task: DownloadPipelineArtifact@0
-      inputs:
-        artifactName: windows-x86
-        targetPath: artifacts
-    - task: DownloadPipelineArtifact@0
-      inputs:
-        artifactName: windows-x86-withAsserts
-        targetPath: artifacts
-    - task: DownloadPipelineArtifact@0
-      inputs:
-        artifactName: linux-x86_64
-        targetPath: artifacts
-    - task: DownloadPipelineArtifact@0
-      inputs:
-        artifactName: linux-x86_64-withAsserts
-        targetPath: artifacts
-    - task: DownloadPipelineArtifact@0
-      inputs:
-        artifactName: osx-x86_64
-        targetPath: artifacts
-    - task: DownloadPipelineArtifact@0
-      inputs:
-        artifactName: osx-x86_64-withAsserts
-        targetPath: artifacts
-    - task: DownloadPipelineArtifact@0
-      inputs:
-        artifactName: android-armv7a
         targetPath: artifacts
     - bash: |
-        set -e
+        set -ex
+        cd artifacts
+        mv */*.* .
+        find . -type d -empty -delete
+        ls -l
+        sha256sum * > sha256sums.txt
+      displayName: Move artifact files out of their subdirs and compute hashes
+    - bash: |
+        set -ex
         if [ "${BUILD_SOURCEBRANCH:0:10}" != "refs/tags/" ]; then
           releaseTag=CI
           isPreRelease=true
+          artifactID=${BUILD_SOURCEVERSION:0:8}
         else
           releaseTag=${BUILD_SOURCEBRANCH:10}
           isPreRelease=false
+          artifactID=${BUILD_SOURCEBRANCH:15}
         fi
+        mv artifacts/sha256sums.txt artifacts/llvm-$artifactID.sha256sums.txt
+        set +x
         echo "##vso[task.setvariable variable=GITHUB_RELEASE_TAG]$releaseTag"
         echo "##vso[task.setvariable variable=GITHUB_RELEASE_ISPRERELEASE]$isPreRelease"
       displayName: Set GITHUB_RELEASE_{TAG,ISPRERELEASE} env variables
